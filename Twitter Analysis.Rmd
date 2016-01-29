@@ -1,0 +1,166 @@
+---
+title: "TwitterAnalysis"
+author: "Sean Lopp"
+date: "1/15/2016"
+output: html_document
+
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r getdata, message=FALSE, warning=FALSE}
+library(twitteR)
+library(stringr)
+library(xts)
+library(dplyr)
+library(tidyr)
+library(DT)
+library(dygraphs)
+library(TTR)
+
+#---------------------
+# Set up Twitter API
+#---------------------
+
+setup_twitter_oauth(consumer_key = 'eAvBDAJEeB9orc74Hq9qPHY1t',
+                    consumer_secret = 'UGAxSFzvOa4nkBhdE8YU58i3n337IDUh2g4lpdpgm4WXNPjgjv',
+                    access_token = '2227694947-JRORzfBG8h5CMPsdFKrXK9ht4v7tQRtQUTNyqCF' ,
+                    access_secret ='yVlt5nsFJkK84SbsoavRBUeb0lAb0uWAbvvihXA7Adl9D' )
+
+#---------------------
+# Get Data from API
+#---------------------
+
+RStudio <- userTimeline('RStudio', n=3200)
+RStudio <-twListToDF(RStudio)
+
+rstudiotips <- userTimeline('rstudiotips', n=3200)
+rstudiotips <-twListToDF(rstudiotips)
+
+Revo <- userTimeline('RevolutionR', n=3200)
+Revo <-twListToDF(Revo)
+
+Rblogger <- userTimeline('Rbloggers', n=3200)
+Rblogger <-twListToDF(Rblogger)
+
+```
+
+
+This analysis highlights the importance of twitter as a way of communicating with our target audience (and the importance of Rbloggers). My main conclusions are:  
+-- the number of twitter views has increased over time  
+-- compared to a competitor (Revolution R) our tweets are less frequent, but more effective  
+-- the handle @rstudiotips is particularly effective but has a small following  
+
+Next steps of this analysis would be to dig further into the relationship between words and retweets (doing textual analysis.) Looking at the twitter feed of individual team members (Hadley, Yihui, etc).  
+
+A primary action item:  
+-- increase promotion of @rstudiotips  
+
+## Summary of Different Twitter Streams
+```{r summary, echo=FALSE, message=FALSE, warning=FALSE}
+summaryTWStream <- function(twStreamDF) {
+  
+  # General Summary
+  
+  first <- min(twStreamDF$created)
+  total <- nrow(twStreamDF)
+  avgReTweet <- round(mean(twStreamDF$retweetCount, na.rm=TRUE),1)
+  avgFav <- round(mean(twStreamDF$favoriteCount, na.rm=TRUE),1)
+  
+  
+  #Most Popular Tweets
+  
+  twSortReTweet <- twStreamDF %>% arrange(desc(retweetCount))
+  top5ReTweet <- twSortReTweet[1:5, c('created','text', 'retweetCount', 'favoriteCount')]
+  
+  twSortFav <- twStreamDF %>% arrange(desc(favoriteCount))
+  top5Fav <- twSortFav[1:5, c('created','text', 'retweetCount', 'favoriteCount')]
+  
+  top5 <- rbind(top5ReTweet, top5Fav)
+  
+  # Get rid of duplicated
+  top5 <- top5 %>% distinct(retweetCount, favoriteCount)
+  
+    
+  StreamSum <- list(first, total, avgReTweet, avgFav,top5)
+}
+
+sRStudio <- summaryTWStream(RStudio)
+sRevo <- summaryTWStream(Revo)
+sRStips <- summaryTWStream(rstudiotips)
+sRBlogger <- summaryTWStream(Rblogger)
+
+
+compDT <- data.frame(Handle=c("rstudio", "revolutionr", "rstudiotips", "rblogger"),
+                     First.Post=c(sRStudio[[1]], sRevo[[1]], sRStips[[1]], sRBlogger[[1]]),
+                     Number.Posts=c(sRStudio[[2]], sRevo[[2]], sRStips[[2]], sRBlogger[[2]]),
+                    Avg.ReTweet =c(sRStudio[[3]], sRevo[[3]], sRStips[[3]], sRBlogger[[3]]),
+                      Avg.Favorited=c(sRStudio[[4]], sRevo[[4]], sRStips[[4]], sRBlogger[[4]]))
+
+
+
+```
+
+An overall summary of the tweet data that could be pulled through the API:
+
+```{r summaryTable}
+DT::datatable(compDT)
+```
+
+The most popular tweets for each handle:
+
+
+#### RStudio 
+`r DT::datatable(sRStudio[[5]])`
+
+#### rstudiotips 
+`r DT::datatable(sRStips[[5]])`
+
+#### revolutionr  
+`r DT::datatable(sRevo[[5]])`
+
+#### rblogger
+`r DT::datatable(sRBlogger[[5]])`
+
+
+
+## Trends over Time
+
+
+
+```{r timeseries, message=FALSE, warning=FALSE}
+#---------------------
+# Clean and Arrange
+#---------------------
+
+RStud <- xts(x=data.frame(reTweet=RStudio$retweetCount), order.by = RStudio$created)
+RStudTips <- xts(x=data.frame(reTweet=rstudiotips$retweetCount), order.by = rstudiotips$created)
+Rblog <- xts(x=data.frame(reTweet=Rblogger$retweetCount), order.by = Rblogger$created)
+Rev <- xts(x=data.frame(reTweet=Revo$retweetCount), order.by = Revo$created)
+
+
+#---------------------
+# Plots
+#---------------------
+
+myDyPlot <- function(handle_name, handle_data){
+  #handle data is xts object
+  data <- cbind(EMA(handle_data, 100),handle_data)
+  colnames(data) <- c("EMA", "retweets")
+  dygraph(data, group="Tweets", main=handle_name) %>% 
+    dySeries("retweets", drawPoints=TRUE, strokeWidth=0.5) %>% 
+    dySeries("EMA", drawPoints=FALSE, strokeWidth=3) %>% 
+    dyRangeSelector()
+}
+
+
+myDyPlot("rstudio",RStud)
+myDyPlot("rstudiotips",RStudTips)
+myDyPlot("rblogger",Rblog)
+myDyPlot("revolutionR",Rev)
+
+```
+
+
